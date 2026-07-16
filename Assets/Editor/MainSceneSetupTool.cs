@@ -70,6 +70,15 @@ namespace WoodClicker.Editor
                 "Logs: 0",
                 64f);
             SetStretch(ownedLogsText.rectTransform, 40f, 40f, 20f, 20f);
+            ownedLogsText.alignment = TextAlignmentOptions.MidlineLeft;
+
+            TextMeshProUGUI ownedMoneyText = CreateText(
+                "OwnedMoneyText",
+                header,
+                "Money: 0",
+                64f);
+            SetStretch(ownedMoneyText.rectTransform, 40f, 40f, 20f, 20f);
+            ownedMoneyText.alignment = TextAlignmentOptions.MidlineRight;
 
             RectTransform mainArea = CreateUiObject("MainArea", safeArea);
             mainArea.anchorMin = Vector2.zero;
@@ -79,6 +88,7 @@ namespace WoodClicker.Editor
 
             Button treeButton = CreateTreeButton(mainArea);
             Image cooldownGauge = CreateCooldownGauge(mainArea);
+            Button sellAllButton = CreateSellAllButton(mainArea);
 
             RectTransform viewTransform = CreateUiObject(
                 "MainScreenView",
@@ -91,13 +101,18 @@ namespace WoodClicker.Editor
                 choppingController,
                 mainScreenView,
                 ownedLogsText,
+                ownedMoneyText,
                 cooldownGauge);
 
             UnityEventTools.AddPersistentListener(
                 treeButton.onClick,
                 mainScreenView.OnTreeButtonClicked);
+            UnityEventTools.AddPersistentListener(
+                sellAllButton.onClick,
+                mainScreenView.OnSellAllButtonClicked);
 
             EditorUtility.SetDirty(treeButton);
+            EditorUtility.SetDirty(sellAllButton);
             EditorSceneManager.MarkSceneDirty(scene);
 
             if (!EditorSceneManager.SaveScene(scene, ScenePath))
@@ -211,6 +226,32 @@ namespace WoodClicker.Editor
             return image;
         }
 
+        private static Button CreateSellAllButton(RectTransform parent)
+        {
+            RectTransform buttonTransform = CreateUiObject("SellAllButton", parent);
+            buttonTransform.anchorMin = new Vector2(0.5f, 0f);
+            buttonTransform.anchorMax = new Vector2(0.5f, 0f);
+            buttonTransform.pivot = new Vector2(0.5f, 0f);
+            buttonTransform.anchoredPosition = new Vector2(0f, 40f);
+            buttonTransform.sizeDelta = new Vector2(620f, 140f);
+
+            Image image = buttonTransform.gameObject.AddComponent<Image>();
+            image.color = new Color(0.85f, 0.55f, 0.15f);
+
+            Button button = buttonTransform.gameObject.AddComponent<Button>();
+            button.targetGraphic = image;
+
+            TextMeshProUGUI label = CreateText(
+                "Label",
+                buttonTransform,
+                "SELL ALL",
+                60f);
+            SetStretch(label.rectTransform, 20f, 20f, 20f, 20f);
+            label.raycastTarget = false;
+
+            return button;
+        }
+
         private static TextMeshProUGUI CreateText(
             string name,
             RectTransform parent,
@@ -254,6 +295,7 @@ namespace WoodClicker.Editor
             ChoppingController choppingController,
             MainScreenView mainScreenView,
             TMP_Text ownedLogsText,
+            TMP_Text ownedMoneyText,
             Image cooldownGauge)
         {
             var controllerObject = new SerializedObject(choppingController);
@@ -264,6 +306,8 @@ namespace WoodClicker.Editor
             var viewObject = new SerializedObject(mainScreenView);
             viewObject.FindProperty("_ownedLogsText").objectReferenceValue =
                 ownedLogsText;
+            viewObject.FindProperty("_ownedMoneyText").objectReferenceValue =
+                ownedMoneyText;
             viewObject.FindProperty("_cooldownGauge").objectReferenceValue =
                 cooldownGauge;
             viewObject.ApplyModifiedPropertiesWithoutUndo();
