@@ -11,18 +11,23 @@ namespace WoodClicker.Application
         private const double LogsPerChop = 1d;
         private const float CooldownSeconds = 1f;
         private const double MoneyPerLog = 1d;
+        private const double InitialTreeMaxHealth = 100d;
 
         [SerializeField] private MainScreenView _mainScreenView;
 
         private PlayerGameState _gameState;
         private ChoppingService _choppingService;
         private SellingService _sellingService;
+        private TreeState _treeState;
         private float _remainingCooldown;
         private float _activeCooldownDuration;
 
         public double OwnedLogs => _gameState?.OwnedLogs ?? 0d;
         public long TotalManualChops => _gameState?.TotalManualChops ?? 0L;
         public double OwnedMoney => _gameState?.OwnedMoney ?? 0d;
+        public double CurrentTreeHealth =>
+            _treeState?.CurrentHealth ?? InitialTreeMaxHealth;
+        public bool IsTreeFelled => _treeState?.IsFelled ?? false;
         public bool IsCooldownActive => _remainingCooldown > 0f;
 
         private void Awake()
@@ -31,6 +36,7 @@ namespace WoodClicker.Application
             _choppingService = new ChoppingService(
                 new ChoppingConfig(LogsPerChop, CooldownSeconds));
             _sellingService = new SellingService(MoneyPerLog);
+            _treeState = new TreeState(InitialTreeMaxHealth);
 
             if (_mainScreenView == null)
             {
@@ -59,13 +65,16 @@ namespace WoodClicker.Application
 
         public ChoppingResult TryChop()
         {
-            ChoppingResult result = _choppingService.TryChop(IsCooldownActive);
+            ChoppingResult result = _choppingService.TryChop(
+                IsCooldownActive,
+                _treeState.IsFelled);
             if (!result.Succeeded)
             {
                 return result;
             }
 
             _gameState.ApplyManualChop(result.EarnedLogs);
+            _treeState.ApplyDamage(result.TreeDamage);
             _activeCooldownDuration = result.CooldownSeconds;
             _remainingCooldown = result.CooldownSeconds;
             RefreshView();
