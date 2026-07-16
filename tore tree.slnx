@@ -1,0 +1,7 @@
+ ProjectSettings/EditorBuildSettings.asset |    5 [32m+[m[31m-[m
+ ProjectSettings/ShaderGraphSettings.asset |    1 [32m+[m
+ WoodClicker/README.md                     |   13 [31m-[m
+ WoodClicker/docs/GAME_DESIGN_DOCUMENT.md  | 1251 [31m-----------------------------[m
+ WoodClicker/docs/UNITY_ARCHITECTURE.md    | 1248 [31m----------------------------[m
+ tree.slnx                                 |    4 [32m+[m
+ 6 files changed, 9 insertions(+), 2513 deletions(-)
