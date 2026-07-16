@@ -8,6 +8,7 @@ namespace WoodClicker.Presentation.MainScreen
     public sealed class MainScreenView : MonoBehaviour
     {
         [SerializeField] private TMP_Text _ownedLogsText;
+        [SerializeField] private TMP_Text _ownedMoneyText;
         [SerializeField] private Image _cooldownGauge;
 
         private ChoppingController _controller;
@@ -28,6 +29,17 @@ namespace WoodClicker.Presentation.MainScreen
             _controller.TryChop();
         }
 
+        public void OnSellAllButtonClicked()
+        {
+            if (_controller == null)
+            {
+                Debug.LogError("ChoppingController is not initialized.", this);
+                return;
+            }
+
+            _controller.SellAllLogs();
+        }
+
         public void RefreshOwnedLogs(double ownedLogs)
         {
             if (_ownedLogsText != null)
@@ -41,6 +53,14 @@ namespace WoodClicker.Presentation.MainScreen
             if (_cooldownGauge != null)
             {
                 _cooldownGauge.fillAmount = Mathf.Clamp01(remainingRatio);
+            }
+        }
+
+        public void RefreshOwnedMoney(double ownedMoney)
+        {
+            if (_ownedMoneyText != null)
+            {
+                _ownedMoneyText.text = ownedMoney.ToString("0.##");
             }
         }
     }
