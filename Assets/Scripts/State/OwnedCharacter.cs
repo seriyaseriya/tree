@@ -15,6 +15,14 @@ namespace WoodClicker.State
         public long FirstObtainedOrder => _firstObtainedOrder;
 
         public OwnedCharacter(string characterId, long firstObtainedOrder)
+            : this(characterId, 1, firstObtainedOrder)
+        {
+        }
+
+        public OwnedCharacter(
+            string characterId,
+            int ownedCount,
+            long firstObtainedOrder)
         {
             if (string.IsNullOrWhiteSpace(characterId))
             {
@@ -23,8 +31,18 @@ namespace WoodClicker.State
                     nameof(characterId));
             }
 
+            if (ownedCount <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(ownedCount));
+            }
+
+            if (firstObtainedOrder <= 0L)
+            {
+                throw new ArgumentOutOfRangeException(nameof(firstObtainedOrder));
+            }
+
             _characterId = characterId;
-            _ownedCount = 1;
+            _ownedCount = ownedCount;
             _firstObtainedOrder = firstObtainedOrder;
         }
 

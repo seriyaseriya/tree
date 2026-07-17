@@ -18,6 +18,54 @@ namespace WoodClicker.State
         public IReadOnlyList<OwnedCharacter> OwnedCharacters =>
             EnsureOwnedCharacters();
 
+        public PlayerGameState()
+        {
+        }
+
+        public PlayerGameState(
+            double ownedLogs,
+            double ownedMoney,
+            double totalLogsEarned,
+            double totalMoneyEarned,
+            long totalManualChops,
+            IEnumerable<OwnedCharacter> ownedCharacters)
+        {
+            if (ownedLogs < 0d || ownedMoney < 0d ||
+                totalLogsEarned < 0d || totalMoneyEarned < 0d ||
+                totalManualChops < 0L)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(ownedLogs),
+                    "Saved player values must not be negative.");
+            }
+
+            OwnedLogs = ownedLogs;
+            OwnedMoney = ownedMoney;
+            TotalLogsEarned = totalLogsEarned;
+            TotalMoneyEarned = totalMoneyEarned;
+            TotalManualChops = totalManualChops;
+            _ownedCharacters = ownedCharacters == null
+                ? new List<OwnedCharacter>()
+                : new List<OwnedCharacter>(ownedCharacters);
+
+            long highestOrder = 0L;
+            foreach (OwnedCharacter character in _ownedCharacters)
+            {
+                if (character == null)
+                {
+                    throw new ArgumentException(
+                        "Owned characters must not contain null.",
+                        nameof(ownedCharacters));
+                }
+
+                highestOrder = Math.Max(
+                    highestOrder,
+                    character.FirstObtainedOrder);
+            }
+
+            _nextCharacterObtainedOrder = highestOrder + 1L;
+        }
+
         public void ApplyManualChop(double earnedLogs)
         {
             if (earnedLogs < 0d)

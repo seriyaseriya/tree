@@ -10,14 +10,24 @@ namespace WoodClicker.State
         public bool IsFelled => CurrentHealth <= 0d;
 
         public TreeState(double maxHealth)
+            : this(maxHealth, maxHealth)
+        {
+        }
+
+        public TreeState(double maxHealth, double currentHealth)
         {
             if (maxHealth <= 0d)
             {
                 throw new ArgumentOutOfRangeException(nameof(maxHealth));
             }
 
+            if (currentHealth < 0d || currentHealth > maxHealth)
+            {
+                throw new ArgumentOutOfRangeException(nameof(currentHealth));
+            }
+
             MaxHealth = maxHealth;
-            CurrentHealth = maxHealth;
+            CurrentHealth = currentHealth;
         }
 
         public void ApplyDamage(double damage)
