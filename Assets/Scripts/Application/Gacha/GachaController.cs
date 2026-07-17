@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using WoodClicker.Domain.Gacha;
 using WoodClicker.Infrastructure.Gacha;
@@ -19,13 +20,16 @@ namespace WoodClicker.Application.Gacha
         private PlayerGameState _gameState;
         private MainScreenView _mainScreenView;
         private bool _isDrawing;
+        private Action _saveGameState;
 
         public void Initialize(
             PlayerGameState gameState,
-            MainScreenView mainScreenView)
+            MainScreenView mainScreenView,
+            Action saveGameState = null)
         {
             _gameState = gameState;
             _mainScreenView = mainScreenView;
+            _saveGameState = saveGameState;
             _definition = PrototypeGachaFactory.Create();
             if (_view == null)
             {
@@ -74,6 +78,7 @@ namespace WoodClicker.Application.Gacha
                     ownedCount);
                 RefreshView();
                 _mainScreenView.RefreshOwnedMoney(_gameState.OwnedMoney);
+                _saveGameState?.Invoke();
             }
             finally
             {

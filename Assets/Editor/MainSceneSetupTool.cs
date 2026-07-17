@@ -10,6 +10,7 @@ using UnityEngine.UI;
 using WoodClicker.Application;
 using WoodClicker.Application.Characters;
 using WoodClicker.Application.Gacha;
+using WoodClicker.Application.Save;
 using WoodClicker.Presentation.Characters;
 using WoodClicker.Presentation.Gacha;
 using WoodClicker.Presentation.MainScreen;
@@ -74,6 +75,8 @@ namespace WoodClicker.Editor
                 gameRoot.AddComponent<GachaController>();
             CharacterCollectionController characterController =
                 gameRoot.AddComponent<CharacterCollectionController>();
+            SaveController saveController =
+                gameRoot.AddComponent<SaveController>();
             CreateEventSystem();
 
             Canvas canvas = CreateCanvas();
@@ -110,7 +113,8 @@ namespace WoodClicker.Editor
                 controller,
                 mainView,
                 gachaController,
-                characterController);
+                characterController,
+                saveController);
             ConnectGachaController(gachaController, gacha.View);
             ConnectGachaView(gacha);
             ConnectCharacterController(characterController, characters.View);
@@ -790,7 +794,8 @@ namespace WoodClicker.Editor
             ChoppingController controller,
             MainScreenView view,
             GachaController gachaController,
-            CharacterCollectionController characterController)
+            CharacterCollectionController characterController,
+            SaveController saveController)
         {
             var serialized = new SerializedObject(controller);
             serialized.FindProperty("_mainScreenView").objectReferenceValue = view;
@@ -798,6 +803,8 @@ namespace WoodClicker.Editor
                 gachaController;
             serialized.FindProperty("_characterCollectionController")
                 .objectReferenceValue = characterController;
+            serialized.FindProperty("_saveController").objectReferenceValue =
+                saveController;
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 

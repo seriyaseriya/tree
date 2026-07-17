@@ -1,10 +1,12 @@
 using UnityEngine;
 using WoodClicker.Application.Gacha;
 using WoodClicker.Application.Characters;
+using WoodClicker.Application.Save;
 using WoodClicker.Domain.Chopping;
 using WoodClicker.Domain.Selling;
 using WoodClicker.Presentation.MainScreen;
 using WoodClicker.State;
+using WoodClicker.Infrastructure.Save;
 
 namespace WoodClicker.Application
 {
@@ -19,6 +21,7 @@ namespace WoodClicker.Application
         [SerializeField] private GachaController _gachaController;
         [SerializeField] private CharacterCollectionController
             _characterCollectionController;
+        [SerializeField] private SaveController _saveController;
 
         private PlayerGameState _gameState;
         private ChoppingService _choppingService;
@@ -37,11 +40,14 @@ namespace WoodClicker.Application
 
         private void Awake()
         {
-            _gameState = new PlayerGameState();
+            _saveController ??= GetComponent<SaveController>();
+            _saveController ??= gameObject.AddComponent<SaveController>();
+            LoadedGameState loadedState = _saveController.LoadOrCreate();
+            _gameState = loadedState.Player;
             _choppingService = new ChoppingService(
                 new ChoppingConfig(LogsPerChop, CooldownSeconds));
             _sellingService = new SellingService(MoneyPerLog);
-            _treeState = new TreeState(InitialTreeMaxHealth);
+            _treeState = loadedState.Tree;
 
             if (_mainScreenView == null)
             {
@@ -53,7 +59,10 @@ namespace WoodClicker.Application
             _mainScreenView.Initialize(this);
             if (_gachaController != null)
             {
-                _gachaController.Initialize(_gameState, _mainScreenView);
+                _gachaController.Initialize(
+                    _gameState,
+                    _mainScreenView,
+                    SaveGameState);
             }
             if (_characterCollectionController != null)
             {
@@ -91,6 +100,7 @@ namespace WoodClicker.Application
             _activeCooldownDuration = result.CooldownSeconds;
             _remainingCooldown = result.CooldownSeconds;
             RefreshView();
+            SaveGameState();
             return result;
         }
 
@@ -114,6 +124,7 @@ namespace WoodClicker.Application
 
             _gameState.ApplySale(result.SoldLogs, result.EarnedMoney);
             RefreshView();
+            SaveGameState();
             return result;
         }
 
@@ -133,6 +144,11 @@ namespace WoodClicker.Application
                 sellPreview.EarnedMoney);
             _mainScreenView.RefreshChoppingInfo(LogsPerChop, 0d, "なし", "正常");
             _mainScreenView.RefreshCooldown(GetCooldownRemainingRatio());
+        }
+
+        private void SaveGameState()
+        {
+            _saveController?.Save(_gameState, _treeState);
         }
     }
 }
