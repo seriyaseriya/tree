@@ -1,5 +1,6 @@
 using UnityEngine;
 using WoodClicker.Application.Gacha;
+using WoodClicker.Application.Characters;
 using WoodClicker.Domain.Chopping;
 using WoodClicker.Domain.Selling;
 using WoodClicker.Presentation.MainScreen;
@@ -16,6 +17,8 @@ namespace WoodClicker.Application
 
         [SerializeField] private MainScreenView _mainScreenView;
         [SerializeField] private GachaController _gachaController;
+        [SerializeField] private CharacterCollectionController
+            _characterCollectionController;
 
         private PlayerGameState _gameState;
         private ChoppingService _choppingService;
@@ -51,6 +54,10 @@ namespace WoodClicker.Application
             if (_gachaController != null)
             {
                 _gachaController.Initialize(_gameState, _mainScreenView);
+            }
+            if (_characterCollectionController != null)
+            {
+                _characterCollectionController.Initialize(_gameState);
             }
             RefreshView();
         }
