@@ -1,4 +1,5 @@
 using UnityEngine;
+using WoodClicker.Application.Gacha;
 using WoodClicker.Domain.Chopping;
 using WoodClicker.Domain.Selling;
 using WoodClicker.Presentation.MainScreen;
@@ -14,6 +15,7 @@ namespace WoodClicker.Application
         private const double InitialTreeMaxHealth = 100d;
 
         [SerializeField] private MainScreenView _mainScreenView;
+        [SerializeField] private GachaController _gachaController;
 
         private PlayerGameState _gameState;
         private ChoppingService _choppingService;
@@ -46,6 +48,10 @@ namespace WoodClicker.Application
             }
 
             _mainScreenView.Initialize(this);
+            if (_gachaController != null)
+            {
+                _gachaController.Initialize(_gameState, _mainScreenView);
+            }
             RefreshView();
         }
 

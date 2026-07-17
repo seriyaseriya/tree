@@ -8,6 +8,8 @@ using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using WoodClicker.Application;
+using WoodClicker.Application.Gacha;
+using WoodClicker.Presentation.Gacha;
 using WoodClicker.Presentation.MainScreen;
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem.UI;
@@ -66,6 +68,8 @@ namespace WoodClicker.Editor
             var gameRoot = new GameObject("GameRoot");
             ChoppingController controller =
                 gameRoot.AddComponent<ChoppingController>();
+            GachaController gachaController =
+                gameRoot.AddComponent<GachaController>();
             CreateEventSystem();
 
             Canvas canvas = CreateCanvas();
@@ -81,8 +85,7 @@ namespace WoodClicker.Editor
 
             ChoppingReferences chopping = CreateChoppingScreen(screenRoot);
             SellReferences sell = CreateSellScreen(screenRoot);
-            GameObject gachaScreen = CreatePlaceholderScreen(
-                "GachaScreen", screenRoot, "ガチャ", "準備中");
+            GachaReferences gacha = CreateGachaScreen(screenRoot);
             GameObject characterScreen = CreatePlaceholderScreen(
                 "CharacterScreen", screenRoot, "キャラ", "準備中");
             GameObject skillScreen = CreatePlaceholderScreen(
@@ -99,13 +102,15 @@ namespace WoodClicker.Editor
             MainNavigationView navigationView =
                 viewTransform.gameObject.AddComponent<MainNavigationView>();
 
-            ConnectController(controller, mainView);
+            ConnectController(controller, mainView, gachaController);
+            ConnectGachaController(gachaController, gacha.View);
+            ConnectGachaView(gacha);
             ConnectMainView(mainView, header, chopping, sell);
             ConnectNavigationView(
                 navigationView,
                 chopping.Screen,
                 sell.Screen,
-                gachaScreen,
+                gacha.Screen,
                 characterScreen,
                 skillScreen,
                 options.Screen,
@@ -116,12 +121,14 @@ namespace WoodClicker.Editor
                 header.OptionsButton,
                 chopping.TreeButton,
                 sell.SellAllButton,
+                gacha.View,
+                gacha.DrawButton,
                 options.CloseButton,
                 navigation.Buttons);
 
             chopping.Screen.SetActive(true);
             sell.Screen.SetActive(false);
-            gachaScreen.SetActive(false);
+            gacha.Screen.SetActive(false);
             characterScreen.SetActive(false);
             skillScreen.SetActive(false);
             options.Screen.SetActive(false);
@@ -539,6 +546,70 @@ namespace WoodClicker.Editor
             return screen.gameObject;
         }
 
+        private static GachaReferences CreateGachaScreen(RectTransform parent)
+        {
+            RectTransform screen = CreateUiObject("GachaScreen", parent);
+            SetStretch(screen);
+            GachaView view = screen.gameObject.AddComponent<GachaView>();
+
+            RectTransform panel = CreatePanel("GachaPanel", screen, PanelColor);
+            panel.anchorMin = new Vector2(0.08f, 0.08f);
+            panel.anchorMax = new Vector2(0.92f, 0.92f);
+            panel.offsetMin = Vector2.zero;
+            panel.offsetMax = Vector2.zero;
+
+            CreateAnchoredText("Title", panel, "ガチャ", 64f, 0.86f, 0.98f);
+            TMP_Text cost = CreateValueLine(
+                panel, "GachaCost", "1回の料金", "100", 0.76f);
+            TMP_Text money = CreateValueLine(
+                panel, "GachaOwnedMoney", "現在の所持金", "0", 0.65f);
+
+            RectTransform resultPanel = CreatePanel(
+                "GachaResultPanel",
+                panel,
+                new Color(0.10f, 0.07f, 0.04f, 0.86f));
+            resultPanel.anchorMin = new Vector2(0.07f, 0.25f);
+            resultPanel.anchorMax = new Vector2(0.93f, 0.58f);
+            resultPanel.offsetMin = Vector2.zero;
+            resultPanel.offsetMax = Vector2.zero;
+            TMP_Text characterName = CreateValueLine(
+                resultPanel, "GachaCharacterName", "キャラクター", "-", 0.79f);
+            TMP_Text rarity = CreateValueLine(
+                resultPanel, "GachaRarity", "レアリティ", "-", 0.59f);
+            TMP_Text acquisitionType = CreateValueLine(
+                resultPanel, "GachaAcquisitionType", "入手区分", "-", 0.39f);
+            TMP_Text ownedCount = CreateValueLine(
+                resultPanel, "GachaOwnedCount", "現在の所持数", "0", 0.19f);
+
+            TMP_Text error = CreateAnchoredText(
+                "GachaErrorText", panel, string.Empty, 36f, 0.17f, 0.24f);
+            error.color = new Color(1f, 0.55f, 0.45f, 1f);
+
+            Button drawButton = CreateButton(
+                "DrawOnceButton",
+                panel,
+                "1回引く",
+                48f,
+                new Color(0.76f, 0.45f, 0.16f, 1f));
+            RectTransform buttonTransform = drawButton.GetComponent<RectTransform>();
+            buttonTransform.anchorMin = new Vector2(0.15f, 0.04f);
+            buttonTransform.anchorMax = new Vector2(0.85f, 0.15f);
+            buttonTransform.offsetMin = Vector2.zero;
+            buttonTransform.offsetMax = Vector2.zero;
+
+            return new GachaReferences(
+                screen.gameObject,
+                view,
+                cost,
+                money,
+                characterName,
+                rarity,
+                acquisitionType,
+                ownedCount,
+                error,
+                drawButton);
+        }
+
         private static OptionsReferences CreateOptionsScreen(RectTransform parent)
         {
             RectTransform screen = CreateUiObject("OptionsScreen", parent);
@@ -597,6 +668,8 @@ namespace WoodClicker.Editor
             Button optionsButton,
             Button treeButton,
             Button sellButton,
+            GachaView gachaView,
+            Button drawButton,
             Button closeOptionsButton,
             Button[] navigationButtons)
         {
@@ -604,6 +677,8 @@ namespace WoodClicker.Editor
                 treeButton.onClick, mainView.OnTreeButtonClicked);
             UnityEventTools.AddPersistentListener(
                 sellButton.onClick, mainView.OnSellAllButtonClicked);
+            UnityEventTools.AddPersistentListener(
+                drawButton.onClick, gachaView.OnDrawButtonClicked);
             UnityEventTools.AddPersistentListener(
                 optionsButton.onClick, navigationView.ShowOptionsScreen);
             UnityEventTools.AddPersistentListener(
@@ -622,10 +697,38 @@ namespace WoodClicker.Editor
 
         private static void ConnectController(
             ChoppingController controller,
-            MainScreenView view)
+            MainScreenView view,
+            GachaController gachaController)
         {
             var serialized = new SerializedObject(controller);
             serialized.FindProperty("_mainScreenView").objectReferenceValue = view;
+            serialized.FindProperty("_gachaController").objectReferenceValue =
+                gachaController;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void ConnectGachaController(
+            GachaController controller,
+            GachaView view)
+        {
+            var serialized = new SerializedObject(controller);
+            SetObjectReference(serialized, "_view", view);
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void ConnectGachaView(GachaReferences gacha)
+        {
+            var serialized = new SerializedObject(gacha.View);
+            SetObjectReference(serialized, "_costText", gacha.CostText);
+            SetObjectReference(serialized, "_ownedMoneyText", gacha.OwnedMoneyText);
+            SetObjectReference(
+                serialized, "_characterNameText", gacha.CharacterNameText);
+            SetObjectReference(serialized, "_rarityText", gacha.RarityText);
+            SetObjectReference(
+                serialized, "_acquisitionTypeText", gacha.AcquisitionTypeText);
+            SetObjectReference(serialized, "_ownedCountText", gacha.OwnedCountText);
+            SetObjectReference(serialized, "_errorText", gacha.ErrorText);
+            SetObjectReference(serialized, "_drawButton", gacha.DrawButton);
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
@@ -968,6 +1071,44 @@ namespace WoodClicker.Editor
             {
                 Screen = screen;
                 CloseButton = button;
+            }
+        }
+
+        private sealed class GachaReferences
+        {
+            public GameObject Screen { get; }
+            public GachaView View { get; }
+            public TMP_Text CostText { get; }
+            public TMP_Text OwnedMoneyText { get; }
+            public TMP_Text CharacterNameText { get; }
+            public TMP_Text RarityText { get; }
+            public TMP_Text AcquisitionTypeText { get; }
+            public TMP_Text OwnedCountText { get; }
+            public TMP_Text ErrorText { get; }
+            public Button DrawButton { get; }
+
+            public GachaReferences(
+                GameObject screen,
+                GachaView view,
+                TMP_Text cost,
+                TMP_Text money,
+                TMP_Text characterName,
+                TMP_Text rarity,
+                TMP_Text acquisitionType,
+                TMP_Text ownedCount,
+                TMP_Text error,
+                Button drawButton)
+            {
+                Screen = screen;
+                View = view;
+                CostText = cost;
+                OwnedMoneyText = money;
+                CharacterNameText = characterName;
+                RarityText = rarity;
+                AcquisitionTypeText = acquisitionType;
+                OwnedCountText = ownedCount;
+                ErrorText = error;
+                DrawButton = drawButton;
             }
         }
 
