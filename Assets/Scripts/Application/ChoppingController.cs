@@ -104,10 +104,21 @@ namespace WoodClicker.Application
             return result;
         }
 
+        public SellingResult GetSellAllPreview()
+        {
+            return _sellingService.SellAll(_gameState.OwnedLogs);
+        }
+
         private void RefreshView()
         {
             _mainScreenView.RefreshOwnedLogs(_gameState.OwnedLogs);
             _mainScreenView.RefreshOwnedMoney(_gameState.OwnedMoney);
+            SellingResult sellPreview = GetSellAllPreview();
+            _mainScreenView.RefreshSellScreen(
+                _gameState.OwnedLogs,
+                MoneyPerLog,
+                sellPreview.EarnedMoney);
+            _mainScreenView.RefreshChoppingInfo(LogsPerChop, 0d, "なし", "正常");
             _mainScreenView.RefreshCooldown(GetCooldownRemainingRatio());
         }
     }

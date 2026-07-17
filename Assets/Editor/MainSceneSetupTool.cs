@@ -19,6 +19,22 @@ namespace WoodClicker.Editor
     {
         private const string SceneDirectory = "Assets/Scenes";
         private const string ScenePath = SceneDirectory + "/MainScene.unity";
+        private const string BackgroundPath =
+            "Assets/Art/Backgrounds/forest-clearing.png";
+        private const string TreePath = "Assets/Art/Trees/giant-tree.png";
+        private const string JapaneseFontAssetPath =
+            "Assets/Art/Fonts/WoodClickerJapanese SDF.asset";
+        private const string JapaneseFontResourcePath =
+            "Assets/TextMesh Pro/Resources/Fonts & Materials/WoodClickerJapanese SDF.asset";
+        private const string FontDirectory = "Assets/Art/Fonts";
+
+        private static TMP_FontAsset _japaneseFontAsset;
+        private static bool _missingJapaneseFontWarningIssued;
+
+        private static readonly Color PanelColor =
+            new Color(0.18f, 0.11f, 0.06f, 0.82f);
+        private static readonly Color ButtonColor =
+            new Color(0.38f, 0.24f, 0.12f, 0.95f);
 
         [MenuItem("Tools/WoodClicker/Create Basic Chopping Scene")]
         public static void CreateBasicChoppingScene()
@@ -38,83 +54,79 @@ namespace WoodClicker.Editor
             }
 
             EnsureSceneDirectoryExists();
+            _japaneseFontAsset = GetOrCreateJapaneseFontAsset();
+            ConfigureSpriteImporter(BackgroundPath, false);
+            ConfigureSpriteImporter(TreePath, true);
 
             Scene scene = EditorSceneManager.NewScene(
                 NewSceneSetup.EmptyScene,
                 NewSceneMode.Single);
 
             CreateMainCamera();
-
             var gameRoot = new GameObject("GameRoot");
-            ChoppingController choppingController =
+            ChoppingController controller =
                 gameRoot.AddComponent<ChoppingController>();
-
             CreateEventSystem();
 
             Canvas canvas = CreateCanvas();
             RectTransform canvasTransform = canvas.GetComponent<RectTransform>();
+            CreateBackground(canvasTransform);
 
             RectTransform safeArea = CreateUiObject("SafeArea", canvasTransform);
             SetStretch(safeArea);
 
-            RectTransform header = CreateUiObject("Header", safeArea);
-            header.anchorMin = new Vector2(0f, 1f);
-            header.anchorMax = new Vector2(1f, 1f);
-            header.pivot = new Vector2(0.5f, 1f);
-            header.anchoredPosition = Vector2.zero;
-            header.sizeDelta = new Vector2(0f, 180f);
+            HeaderReferences header = CreateCommonHeader(safeArea);
+            RectTransform screenRoot = CreateUiObject("ScreenRoot", safeArea);
+            SetStretch(screenRoot, 0f, 0f, 180f, 190f);
 
-            TextMeshProUGUI ownedLogsText = CreateText(
-                "OwnedLogsText",
-                header,
-                "Logs: 0",
-                64f);
-            SetStretch(ownedLogsText.rectTransform, 40f, 40f, 20f, 20f);
-            ownedLogsText.alignment = TextAlignmentOptions.MidlineLeft;
+            ChoppingReferences chopping = CreateChoppingScreen(screenRoot);
+            SellReferences sell = CreateSellScreen(screenRoot);
+            GameObject gachaScreen = CreatePlaceholderScreen(
+                "GachaScreen", screenRoot, "ガチャ", "準備中");
+            GameObject characterScreen = CreatePlaceholderScreen(
+                "CharacterScreen", screenRoot, "キャラ", "準備中");
+            GameObject skillScreen = CreatePlaceholderScreen(
+                "SkillTreeScreen", screenRoot, "スキル", "共同開発中");
+            OptionsReferences options = CreateOptionsScreen(screenRoot);
 
-            TextMeshProUGUI ownedMoneyText = CreateText(
-                "OwnedMoneyText",
-                header,
-                "Money: 0",
-                64f);
-            SetStretch(ownedMoneyText.rectTransform, 40f, 40f, 20f, 20f);
-            ownedMoneyText.alignment = TextAlignmentOptions.MidlineRight;
-
-            RectTransform mainArea = CreateUiObject("MainArea", safeArea);
-            mainArea.anchorMin = Vector2.zero;
-            mainArea.anchorMax = Vector2.one;
-            mainArea.offsetMin = new Vector2(0f, 120f);
-            mainArea.offsetMax = new Vector2(0f, -180f);
-
-            Button treeButton = CreateTreeButton(mainArea);
-            Image cooldownGauge = CreateCooldownGauge(mainArea);
-            Button sellAllButton = CreateSellAllButton(mainArea);
+            NavigationReferences navigation = CreateBottomNavigation(safeArea);
 
             RectTransform viewTransform = CreateUiObject(
-                "MainScreenView",
-                canvasTransform);
+                "MainScreenView", canvasTransform);
             SetStretch(viewTransform);
-            MainScreenView mainScreenView =
+            MainScreenView mainView =
                 viewTransform.gameObject.AddComponent<MainScreenView>();
+            MainNavigationView navigationView =
+                viewTransform.gameObject.AddComponent<MainNavigationView>();
 
-            ConnectSerializedReferences(
-                choppingController,
-                mainScreenView,
-                ownedLogsText,
-                ownedMoneyText,
-                cooldownGauge);
+            ConnectController(controller, mainView);
+            ConnectMainView(mainView, header, chopping, sell);
+            ConnectNavigationView(
+                navigationView,
+                chopping.Screen,
+                sell.Screen,
+                gachaScreen,
+                characterScreen,
+                skillScreen,
+                options.Screen,
+                navigation.ButtonImages);
+            RegisterButtonEvents(
+                mainView,
+                navigationView,
+                header.OptionsButton,
+                chopping.TreeButton,
+                sell.SellAllButton,
+                options.CloseButton,
+                navigation.Buttons);
 
-            UnityEventTools.AddPersistentListener(
-                treeButton.onClick,
-                mainScreenView.OnTreeButtonClicked);
-            UnityEventTools.AddPersistentListener(
-                sellAllButton.onClick,
-                mainScreenView.OnSellAllButtonClicked);
+            chopping.Screen.SetActive(true);
+            sell.Screen.SetActive(false);
+            gachaScreen.SetActive(false);
+            characterScreen.SetActive(false);
+            skillScreen.SetActive(false);
+            options.Screen.SetActive(false);
 
-            EditorUtility.SetDirty(treeButton);
-            EditorUtility.SetDirty(sellAllButton);
             EditorSceneManager.MarkSceneDirty(scene);
-
             if (!EditorSceneManager.SaveScene(scene, ScenePath))
             {
                 Debug.LogError($"Failed to save scene at {ScenePath}.");
@@ -122,7 +134,725 @@ namespace WoodClicker.Editor
             }
 
             Selection.activeGameObject = gameRoot;
-            Debug.Log($"Created and opened {ScenePath}.");
+            Debug.Log($"Created smartphone main UI at {ScenePath}.");
+        }
+
+        [MenuItem("Tools/WoodClicker/Apply Japanese Font To Main Scene")]
+        public static void ApplyJapaneseFontToMainScene()
+        {
+            TMP_FontAsset fontAsset = GetOrCreateJapaneseFontAsset();
+            if (fontAsset == null)
+            {
+                return;
+            }
+
+            if (!File.Exists(ScenePath))
+            {
+                Debug.LogWarning($"MainScene was not found at {ScenePath}.");
+                return;
+            }
+
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+            {
+                return;
+            }
+
+            Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+            TMP_Text[] texts = Object.FindObjectsByType<TMP_Text>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None);
+            int appliedCount = 0;
+            foreach (TMP_Text text in texts)
+            {
+                if (text.gameObject.scene != scene || text.font == fontAsset)
+                {
+                    continue;
+                }
+
+                Undo.RecordObject(text, "Apply Japanese TMP Font");
+                text.font = fontAsset;
+                EditorUtility.SetDirty(text);
+                appliedCount++;
+            }
+
+            EditorSceneManager.MarkSceneDirty(scene);
+            if (!EditorSceneManager.SaveScene(scene, ScenePath))
+            {
+                Debug.LogError($"Failed to save scene at {ScenePath}.");
+                return;
+            }
+
+            Debug.Log(
+                $"Applied {fontAsset.name} to {appliedCount} TMP text components in MainScene.");
+        }
+
+        private static TMP_FontAsset GetOrCreateJapaneseFontAsset()
+        {
+            if (_japaneseFontAsset != null)
+            {
+                return _japaneseFontAsset;
+            }
+
+            TMP_FontAsset existing =
+                AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(JapaneseFontAssetPath);
+            if (existing == null)
+            {
+                existing = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(
+                    JapaneseFontResourcePath);
+            }
+
+            if (existing != null)
+            {
+                existing.atlasPopulationMode = AtlasPopulationMode.Dynamic;
+                existing.isMultiAtlasTexturesEnabled = true;
+                EditorUtility.SetDirty(existing);
+                AssetDatabase.SaveAssets();
+                _japaneseFontAsset = existing;
+                return existing;
+            }
+
+            Font sourceFont = FindJapaneseSourceFont();
+
+            if (sourceFont == null)
+            {
+                WarnMissingJapaneseFontOnce();
+                return null;
+            }
+
+            TMP_FontAsset created = TMP_FontAsset.CreateFontAsset(
+                sourceFont,
+                90,
+                9,
+                UnityEngine.TextCore.LowLevel.GlyphRenderMode.SDFAA,
+                1024,
+                1024,
+                AtlasPopulationMode.Dynamic,
+                true);
+            if (created == null)
+            {
+                Debug.LogError(
+                    $"Failed to create a TMP font asset from {AssetDatabase.GetAssetPath(sourceFont)}.");
+                return null;
+            }
+
+            created.name = "WoodClickerJapanese SDF";
+            created.atlasPopulationMode = AtlasPopulationMode.Dynamic;
+            created.isMultiAtlasTexturesEnabled = true;
+            created.atlasTexture.name = "WoodClickerJapanese SDF Atlas";
+            created.material.name = "WoodClickerJapanese SDF Material";
+
+            AssetDatabase.CreateAsset(created, JapaneseFontAssetPath);
+            AssetDatabase.AddObjectToAsset(created.atlasTexture, created);
+            AssetDatabase.AddObjectToAsset(created.material, created);
+            EditorUtility.SetDirty(created);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.ImportAsset(JapaneseFontAssetPath);
+
+            _japaneseFontAsset = created;
+            Debug.Log(
+                $"Created dynamic Japanese TMP font asset at {JapaneseFontAssetPath}.");
+            return created;
+        }
+
+        private static Font FindJapaneseSourceFont()
+        {
+            if (!AssetDatabase.IsValidFolder(FontDirectory))
+            {
+                return null;
+            }
+
+            string[] guids = AssetDatabase.FindAssets(
+                "t:Font",
+                new[] { FontDirectory });
+            var fontPaths = new System.Collections.Generic.List<string>();
+            foreach (string guid in guids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                string extension = Path.GetExtension(path);
+                if (!extension.Equals(".ttf", System.StringComparison.OrdinalIgnoreCase) &&
+                    !extension.Equals(".otf", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                Font font = AssetDatabase.LoadAssetAtPath<Font>(path);
+                if (font != null && SupportsJapanese(font))
+                {
+                    fontPaths.Add(path);
+                }
+            }
+
+            fontPaths.Sort(System.StringComparer.OrdinalIgnoreCase);
+            if (fontPaths.Count == 0)
+            {
+                return null;
+            }
+
+            if (fontPaths.Count == 1)
+            {
+                return AssetDatabase.LoadAssetAtPath<Font>(fontPaths[0]);
+            }
+
+            string[] preferredNameParts = {
+                "Japanese", "JP", "Gothic", "Mincho", "Noto"
+            };
+            foreach (string path in fontPaths)
+            {
+                string fileName = Path.GetFileNameWithoutExtension(path);
+                foreach (string namePart in preferredNameParts)
+                {
+                    if (fileName.IndexOf(
+                            namePart,
+                            System.StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        return AssetDatabase.LoadAssetAtPath<Font>(path);
+                    }
+                }
+            }
+
+            return AssetDatabase.LoadAssetAtPath<Font>(fontPaths[0]);
+        }
+
+        private static bool SupportsJapanese(Font font)
+        {
+            return font.HasCharacter('あ') &&
+                   font.HasCharacter('ア') &&
+                   font.HasCharacter('日');
+        }
+
+        private static void WarnMissingJapaneseFontOnce()
+        {
+            if (_missingJapaneseFontWarningIssued)
+            {
+                return;
+            }
+
+            _missingJapaneseFontWarningIssued = true;
+            Debug.LogWarning(
+                "No Japanese-compatible TTF or OTF font was found in " +
+                "Assets/Art/Fonts. Place a licensed Japanese font there, then run " +
+                "Tools > WoodClicker > Apply Japanese Font To Main Scene or " +
+                "recreate MainScene. Existing font references were left unchanged.");
+        }
+
+        private static void ConfigureSpriteImporter(string path, bool hasAlpha)
+        {
+            if (!File.Exists(path))
+            {
+                Debug.LogWarning(
+                    $"UI image was not found at {path}. A placeholder color will be used.");
+                return;
+            }
+
+            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+            if (!(AssetImporter.GetAtPath(path) is TextureImporter importer))
+            {
+                Debug.LogWarning($"Could not configure TextureImporter for {path}.");
+                return;
+            }
+
+            importer.textureType = TextureImporterType.Sprite;
+            importer.spriteImportMode = SpriteImportMode.Single;
+            importer.alphaIsTransparency = hasAlpha;
+            importer.isReadable = false;
+            var textureSettings = new TextureImporterSettings();
+            importer.ReadTextureSettings(textureSettings);
+            textureSettings.spriteMeshType = SpriteMeshType.FullRect;
+            importer.SetTextureSettings(textureSettings);
+            importer.SaveAndReimport();
+        }
+
+        private static void CreateBackground(RectTransform canvas)
+        {
+            RectTransform root = CreateUiObject("BackgroundRoot", canvas);
+            SetStretch(root);
+            RectTransform imageTransform = CreateUiObject("ForestBackground", root);
+            SetStretch(imageTransform);
+            Image image = imageTransform.gameObject.AddComponent<Image>();
+            image.color = new Color(0.16f, 0.28f, 0.16f, 1f);
+            image.raycastTarget = false;
+            Sprite sprite = AssetDatabase.LoadAssetAtPath<Sprite>(BackgroundPath);
+            if (sprite != null)
+            {
+                image.sprite = sprite;
+                image.color = Color.white;
+                image.preserveAspect = true;
+                AspectRatioFitter fitter =
+                    imageTransform.gameObject.AddComponent<AspectRatioFitter>();
+                fitter.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+                fitter.aspectRatio = sprite.rect.width / sprite.rect.height;
+            }
+        }
+
+        private static HeaderReferences CreateCommonHeader(RectTransform parent)
+        {
+            RectTransform header = CreateUiObject("CommonHeader", parent);
+            SetTopAnchored(header, 180f);
+
+            RectTransform logsPanel = CreatePanel("OwnedLogsPanel", header, PanelColor);
+            SetHorizontalCell(logsPanel, 0f, 0.41f, 20f, 8f);
+            TMP_Text logsIcon = CreateText("LogsIcon", logsPanel, "丸太", 34f);
+            SetLeftSection(logsIcon.rectTransform, 0.34f);
+            TMP_Text logsText = CreateText("OwnedLogsText", logsPanel, "0", 48f);
+            SetRightSection(logsText.rectTransform, 0.34f);
+
+            RectTransform moneyPanel = CreatePanel("OwnedMoneyPanel", header, PanelColor);
+            SetHorizontalCell(moneyPanel, 0.41f, 0.82f, 8f, 8f);
+            TMP_Text moneyIcon = CreateText("MoneyIcon", moneyPanel, "お金", 34f);
+            SetLeftSection(moneyIcon.rectTransform, 0.34f);
+            TMP_Text moneyText = CreateText("OwnedMoneyText", moneyPanel, "0", 48f);
+            SetRightSection(moneyText.rectTransform, 0.34f);
+
+            Button optionsButton = CreateButton(
+                "OptionsButton", header, "⚙", 52f, ButtonColor);
+            RectTransform optionsTransform = optionsButton.GetComponent<RectTransform>();
+            optionsTransform.anchorMin = new Vector2(0.84f, 0.15f);
+            optionsTransform.anchorMax = new Vector2(0.98f, 0.85f);
+            optionsTransform.offsetMin = Vector2.zero;
+            optionsTransform.offsetMax = Vector2.zero;
+
+            return new HeaderReferences(logsText, moneyText, optionsButton);
+        }
+
+        private static ChoppingReferences CreateChoppingScreen(RectTransform parent)
+        {
+            RectTransform screen = CreateUiObject("ChoppingScreen", parent);
+            SetStretch(screen);
+
+            RectTransform interaction = CreateUiObject("TreeInteractionArea", screen);
+            interaction.anchorMin = new Vector2(0f, 0.30f);
+            interaction.anchorMax = Vector2.one;
+            interaction.offsetMin = Vector2.zero;
+            interaction.offsetMax = Vector2.zero;
+
+            RectTransform treeButtonTransform = CreateUiObject(
+                "GiantTreeButton", interaction);
+            treeButtonTransform.anchorMin = new Vector2(0.5f, 0.5f);
+            treeButtonTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            treeButtonTransform.pivot = new Vector2(0.5f, 0.5f);
+            treeButtonTransform.anchoredPosition = new Vector2(0f, -20f);
+            treeButtonTransform.sizeDelta = new Vector2(920f, 1080f);
+            Button treeButton = treeButtonTransform.gameObject.AddComponent<Button>();
+
+            RectTransform treeImageTransform = CreateUiObject(
+                "GiantTreeImage", treeButtonTransform);
+            SetStretch(treeImageTransform);
+            Image treeImage = treeImageTransform.gameObject.AddComponent<Image>();
+            treeImage.color = new Color(0.30f, 0.55f, 0.22f, 1f);
+            treeImage.preserveAspect = true;
+            Sprite treeSprite = AssetDatabase.LoadAssetAtPath<Sprite>(TreePath);
+            if (treeSprite != null)
+            {
+                treeImage.sprite = treeSprite;
+                treeImage.color = Color.white;
+            }
+            treeButton.targetGraphic = treeImage;
+
+            RectTransform woodcutter = CreateUiObject("MainWoodcutterRoot", interaction);
+            SetStretch(woodcutter);
+            RectTransform tapEffects = CreateUiObject("TapEffectRoot", interaction);
+            SetStretch(tapEffects);
+
+            RectTransform info = CreatePanel("ChoppingInfoPanel", screen, PanelColor);
+            info.anchorMin = new Vector2(0.03f, 0.08f);
+            info.anchorMax = new Vector2(0.97f, 0.30f);
+            info.offsetMin = Vector2.zero;
+            info.offsetMax = Vector2.zero;
+
+            TMP_Text logsPerTap = CreateInfoRow(info, 0, "LogsPerTapLabel", "1タップ", "LogsPerTapText", "1");
+            TMP_Text logsPerSecond = CreateInfoRow(info, 1, "LogsPerSecondLabel", "1秒あたり", "LogsPerSecondText", "0");
+            TMP_Text tool = CreateInfoRow(info, 2, "EquippedToolLabel", "装備", "EquippedToolText", "なし");
+            TMP_Text toolStatus = CreateInfoRow(info, 3, "ToolStatusLabel", "道具状態", "ToolStatusText", "正常");
+
+            RectTransform cooldownPanel = CreatePanel("CooldownPanel", screen, PanelColor);
+            cooldownPanel.anchorMin = new Vector2(0.03f, 0.01f);
+            cooldownPanel.anchorMax = new Vector2(0.97f, 0.075f);
+            cooldownPanel.offsetMin = Vector2.zero;
+            cooldownPanel.offsetMax = Vector2.zero;
+            RectTransform gaugeBackground = CreatePanel(
+                "CooldownGaugeBackground", cooldownPanel,
+                new Color(0.08f, 0.06f, 0.04f, 0.9f));
+            SetStretch(gaugeBackground, 20f, 20f, 16f, 16f);
+            RectTransform gaugeTransform = CreateUiObject(
+                "CooldownGauge", gaugeBackground);
+            SetStretch(gaugeTransform);
+            Image gauge = gaugeTransform.gameObject.AddComponent<Image>();
+            gauge.color = new Color(0.95f, 0.68f, 0.18f, 1f);
+            gauge.type = Image.Type.Filled;
+            gauge.fillMethod = Image.FillMethod.Horizontal;
+            gauge.fillOrigin = (int)Image.OriginHorizontal.Left;
+            gauge.fillAmount = 0f;
+            TMP_Text cooldownText = CreateText(
+                "CooldownText", cooldownPanel, "伐採可能", 30f);
+            SetStretch(cooldownText.rectTransform);
+            cooldownText.raycastTarget = false;
+
+            return new ChoppingReferences(
+                screen.gameObject, treeButton, gauge, cooldownText,
+                logsPerTap, logsPerSecond, tool, toolStatus);
+        }
+
+        private static SellReferences CreateSellScreen(RectTransform parent)
+        {
+            RectTransform screen = CreateUiObject("SellScreen", parent);
+            SetStretch(screen);
+            RectTransform panel = CreatePanel("SellPanel", screen, PanelColor);
+            panel.anchorMin = new Vector2(0.08f, 0.16f);
+            panel.anchorMax = new Vector2(0.92f, 0.84f);
+            panel.offsetMin = Vector2.zero;
+            panel.offsetMax = Vector2.zero;
+
+            CreateAnchoredText("Title", panel, "換金", 64f, 0.82f, 0.98f);
+            TMP_Text owned = CreateValueLine(panel, "SellOwnedLogs", "所持丸太", "0", 0.66f);
+            TMP_Text basePrice = CreateValueLine(panel, "BaseSellPrice", "1本あたり", "1", 0.53f);
+            TMP_Text finalAmount = CreateValueLine(panel, "FinalSellAmount", "換金予定額", "0", 0.40f);
+            CreateValueLine(panel, "ActiveMerchant", "採用中の商人", "なし", 0.27f);
+
+            Button sellButton = CreateButton(
+                "SellAllButton", panel, "すべて換金", 52f,
+                new Color(0.76f, 0.45f, 0.16f, 1f));
+            RectTransform buttonTransform = sellButton.GetComponent<RectTransform>();
+            buttonTransform.anchorMin = new Vector2(0.12f, 0.06f);
+            buttonTransform.anchorMax = new Vector2(0.88f, 0.20f);
+            buttonTransform.offsetMin = Vector2.zero;
+            buttonTransform.offsetMax = Vector2.zero;
+
+            return new SellReferences(
+                screen.gameObject, owned, basePrice, finalAmount, sellButton);
+        }
+
+        private static GameObject CreatePlaceholderScreen(
+            string name,
+            RectTransform parent,
+            string title,
+            string message)
+        {
+            RectTransform screen = CreateUiObject(name, parent);
+            SetStretch(screen);
+            RectTransform panel = CreatePanel("ContentPanel", screen, PanelColor);
+            panel.anchorMin = new Vector2(0.10f, 0.30f);
+            panel.anchorMax = new Vector2(0.90f, 0.70f);
+            panel.offsetMin = Vector2.zero;
+            panel.offsetMax = Vector2.zero;
+            CreateAnchoredText("Title", panel, title, 64f, 0.55f, 0.90f);
+            CreateAnchoredText("Message", panel, message, 46f, 0.15f, 0.55f);
+            return screen.gameObject;
+        }
+
+        private static OptionsReferences CreateOptionsScreen(RectTransform parent)
+        {
+            RectTransform screen = CreateUiObject("OptionsScreen", parent);
+            SetStretch(screen);
+            RectTransform panel = CreatePanel("OptionsPanel", screen, PanelColor);
+            panel.anchorMin = new Vector2(0.10f, 0.25f);
+            panel.anchorMax = new Vector2(0.90f, 0.75f);
+            panel.offsetMin = Vector2.zero;
+            panel.offsetMax = Vector2.zero;
+            CreateAnchoredText("Title", panel, "オプション", 64f, 0.68f, 0.92f);
+            CreateAnchoredText("Message", panel, "準備中", 46f, 0.36f, 0.66f);
+            Button close = CreateButton("CloseButton", panel, "閉じる", 44f, ButtonColor);
+            RectTransform closeTransform = close.GetComponent<RectTransform>();
+            closeTransform.anchorMin = new Vector2(0.20f, 0.10f);
+            closeTransform.anchorMax = new Vector2(0.80f, 0.30f);
+            closeTransform.offsetMin = Vector2.zero;
+            closeTransform.offsetMax = Vector2.zero;
+            return new OptionsReferences(screen.gameObject, close);
+        }
+
+        private static NavigationReferences CreateBottomNavigation(RectTransform parent)
+        {
+            RectTransform navigation = CreatePanel(
+                "BottomNavigation", parent,
+                new Color(0.10f, 0.07f, 0.04f, 0.98f));
+            navigation.anchorMin = Vector2.zero;
+            navigation.anchorMax = new Vector2(1f, 0f);
+            navigation.pivot = new Vector2(0.5f, 0f);
+            navigation.anchoredPosition = Vector2.zero;
+            navigation.sizeDelta = new Vector2(0f, 190f);
+
+            string[] names = {
+                "ChoppingNavButton", "SellNavButton", "GachaNavButton",
+                "CharacterNavButton", "SkillNavButton"
+            };
+            string[] labels = { "伐採", "換金", "ガチャ", "キャラ", "スキル" };
+            var buttons = new Button[5];
+            var images = new Image[5];
+            for (int i = 0; i < buttons.Length; i++)
+            {
+                buttons[i] = CreateButton(names[i], navigation, labels[i], 36f, ButtonColor);
+                RectTransform rect = buttons[i].GetComponent<RectTransform>();
+                rect.anchorMin = new Vector2(i / 5f, 0f);
+                rect.anchorMax = new Vector2((i + 1f) / 5f, 1f);
+                rect.offsetMin = new Vector2(4f, 8f);
+                rect.offsetMax = new Vector2(-4f, -8f);
+                images[i] = buttons[i].GetComponent<Image>();
+            }
+
+            return new NavigationReferences(buttons, images);
+        }
+
+        private static void RegisterButtonEvents(
+            MainScreenView mainView,
+            MainNavigationView navigationView,
+            Button optionsButton,
+            Button treeButton,
+            Button sellButton,
+            Button closeOptionsButton,
+            Button[] navigationButtons)
+        {
+            UnityEventTools.AddPersistentListener(
+                treeButton.onClick, mainView.OnTreeButtonClicked);
+            UnityEventTools.AddPersistentListener(
+                sellButton.onClick, mainView.OnSellAllButtonClicked);
+            UnityEventTools.AddPersistentListener(
+                optionsButton.onClick, navigationView.ShowOptionsScreen);
+            UnityEventTools.AddPersistentListener(
+                closeOptionsButton.onClick, navigationView.CloseOptionsScreen);
+            UnityEventTools.AddPersistentListener(
+                navigationButtons[0].onClick, navigationView.ShowChoppingScreen);
+            UnityEventTools.AddPersistentListener(
+                navigationButtons[1].onClick, navigationView.ShowSellScreen);
+            UnityEventTools.AddPersistentListener(
+                navigationButtons[2].onClick, navigationView.ShowGachaScreen);
+            UnityEventTools.AddPersistentListener(
+                navigationButtons[3].onClick, navigationView.ShowCharacterScreen);
+            UnityEventTools.AddPersistentListener(
+                navigationButtons[4].onClick, navigationView.ShowSkillTreeScreen);
+        }
+
+        private static void ConnectController(
+            ChoppingController controller,
+            MainScreenView view)
+        {
+            var serialized = new SerializedObject(controller);
+            serialized.FindProperty("_mainScreenView").objectReferenceValue = view;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void ConnectMainView(
+            MainScreenView view,
+            HeaderReferences header,
+            ChoppingReferences chopping,
+            SellReferences sell)
+        {
+            var serialized = new SerializedObject(view);
+            SetObjectReference(serialized, "_ownedLogsText", header.OwnedLogsText);
+            SetObjectReference(serialized, "_ownedMoneyText", header.OwnedMoneyText);
+            SetObjectReference(serialized, "_cooldownGauge", chopping.CooldownGauge);
+            SetObjectReference(serialized, "_cooldownText", chopping.CooldownText);
+            SetObjectReference(serialized, "_logsPerTapText", chopping.LogsPerTapText);
+            SetObjectReference(serialized, "_logsPerSecondText", chopping.LogsPerSecondText);
+            SetObjectReference(serialized, "_equippedToolText", chopping.EquippedToolText);
+            SetObjectReference(serialized, "_toolStatusText", chopping.ToolStatusText);
+            SetObjectReference(serialized, "_sellOwnedLogsText", sell.OwnedLogsText);
+            SetObjectReference(serialized, "_baseSellPriceText", sell.BasePriceText);
+            SetObjectReference(serialized, "_finalSellAmountText", sell.FinalAmountText);
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void ConnectNavigationView(
+            MainNavigationView view,
+            GameObject chopping,
+            GameObject sell,
+            GameObject gacha,
+            GameObject character,
+            GameObject skill,
+            GameObject options,
+            Image[] buttonImages)
+        {
+            var serialized = new SerializedObject(view);
+            SetObjectReference(serialized, "_choppingScreen", chopping);
+            SetObjectReference(serialized, "_sellScreen", sell);
+            SetObjectReference(serialized, "_gachaScreen", gacha);
+            SetObjectReference(serialized, "_characterScreen", character);
+            SetObjectReference(serialized, "_skillTreeScreen", skill);
+            SetObjectReference(serialized, "_optionsScreen", options);
+            SerializedProperty images =
+                serialized.FindProperty("_navigationButtonImages");
+            images.arraySize = buttonImages.Length;
+            for (int i = 0; i < buttonImages.Length; i++)
+            {
+                images.GetArrayElementAtIndex(i).objectReferenceValue = buttonImages[i];
+            }
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void SetObjectReference(
+            SerializedObject serialized,
+            string propertyName,
+            Object value)
+        {
+            serialized.FindProperty(propertyName).objectReferenceValue = value;
+        }
+
+        private static TMP_Text CreateInfoRow(
+            RectTransform parent,
+            int index,
+            string labelName,
+            string label,
+            string valueName,
+            string value)
+        {
+            float rowTop = 1f - index * 0.25f;
+            TMP_Text labelText = CreateText(labelName, parent, label, 32f);
+            labelText.rectTransform.anchorMin = new Vector2(0.04f, rowTop - 0.23f);
+            labelText.rectTransform.anchorMax = new Vector2(0.54f, rowTop);
+            labelText.rectTransform.offsetMin = Vector2.zero;
+            labelText.rectTransform.offsetMax = Vector2.zero;
+            labelText.alignment = TextAlignmentOptions.MidlineLeft;
+            TMP_Text valueText = CreateText(valueName, parent, value, 36f);
+            valueText.rectTransform.anchorMin = new Vector2(0.56f, rowTop - 0.23f);
+            valueText.rectTransform.anchorMax = new Vector2(0.96f, rowTop);
+            valueText.rectTransform.offsetMin = Vector2.zero;
+            valueText.rectTransform.offsetMax = Vector2.zero;
+            valueText.alignment = TextAlignmentOptions.MidlineRight;
+            return valueText;
+        }
+
+        private static TMP_Text CreateValueLine(
+            RectTransform parent,
+            string name,
+            string label,
+            string value,
+            float centerY)
+        {
+            CreateAnchoredText(name + "Label", parent, label, 38f,
+                centerY - 0.06f, centerY + 0.06f, 0.06f, 0.56f);
+            return CreateAnchoredText(name + "Text", parent, value, 42f,
+                centerY - 0.06f, centerY + 0.06f, 0.58f, 0.94f);
+        }
+
+        private static TMP_Text CreateAnchoredText(
+            string name,
+            RectTransform parent,
+            string text,
+            float size,
+            float minY,
+            float maxY,
+            float minX = 0.05f,
+            float maxX = 0.95f)
+        {
+            TMP_Text component = CreateText(name, parent, text, size);
+            component.rectTransform.anchorMin = new Vector2(minX, minY);
+            component.rectTransform.anchorMax = new Vector2(maxX, maxY);
+            component.rectTransform.offsetMin = Vector2.zero;
+            component.rectTransform.offsetMax = Vector2.zero;
+            return component;
+        }
+
+        private static Button CreateButton(
+            string name,
+            RectTransform parent,
+            string label,
+            float fontSize,
+            Color color)
+        {
+            RectTransform rect = CreateUiObject(name, parent);
+            Image image = rect.gameObject.AddComponent<Image>();
+            image.color = color;
+            Button button = rect.gameObject.AddComponent<Button>();
+            button.targetGraphic = image;
+            TMP_Text text = CreateText("Label", rect, label, fontSize);
+            SetStretch(text.rectTransform, 8f, 8f, 8f, 8f);
+            text.raycastTarget = false;
+            return button;
+        }
+
+        private static RectTransform CreatePanel(
+            string name,
+            RectTransform parent,
+            Color color)
+        {
+            RectTransform rect = CreateUiObject(name, parent);
+            Image image = rect.gameObject.AddComponent<Image>();
+            image.color = color;
+            return rect;
+        }
+
+        private static TMP_Text CreateText(
+            string name,
+            RectTransform parent,
+            string text,
+            float fontSize)
+        {
+            RectTransform rect = CreateUiObject(name, parent);
+            TextMeshProUGUI component =
+                rect.gameObject.AddComponent<TextMeshProUGUI>();
+            component.text = text;
+            component.fontSize = fontSize;
+            component.alignment = TextAlignmentOptions.Center;
+            component.color = Color.white;
+            component.enableWordWrapping = false;
+            TMP_FontAsset japaneseFont =
+                _japaneseFontAsset != null
+                    ? _japaneseFontAsset
+                    : GetOrCreateJapaneseFontAsset();
+            if (japaneseFont != null)
+            {
+                component.font = japaneseFont;
+            }
+            return component;
+        }
+
+        private static RectTransform CreateUiObject(
+            string name,
+            RectTransform parent)
+        {
+            var gameObject = new GameObject(name, typeof(RectTransform));
+            RectTransform rect = gameObject.GetComponent<RectTransform>();
+            rect.SetParent(parent, false);
+            return rect;
+        }
+
+        private static void SetStretch(
+            RectTransform rect,
+            float left = 0f,
+            float right = 0f,
+            float top = 0f,
+            float bottom = 0f)
+        {
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = new Vector2(left, bottom);
+            rect.offsetMax = new Vector2(-right, -top);
+        }
+
+        private static void SetTopAnchored(RectTransform rect, float height)
+        {
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = Vector2.one;
+            rect.pivot = new Vector2(0.5f, 1f);
+            rect.anchoredPosition = Vector2.zero;
+            rect.sizeDelta = new Vector2(0f, height);
+        }
+
+        private static void SetHorizontalCell(
+            RectTransform rect,
+            float minX,
+            float maxX,
+            float horizontalMargin,
+            float verticalMargin)
+        {
+            rect.anchorMin = new Vector2(minX, 0f);
+            rect.anchorMax = new Vector2(maxX, 1f);
+            rect.offsetMin = new Vector2(horizontalMargin, verticalMargin);
+            rect.offsetMax = new Vector2(-horizontalMargin, -verticalMargin);
+        }
+
+        private static void SetLeftSection(RectTransform rect, float maxX)
+        {
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = new Vector2(maxX, 1f);
+            rect.offsetMin = new Vector2(12f, 4f);
+            rect.offsetMax = new Vector2(-4f, -4f);
+        }
+
+        private static void SetRightSection(RectTransform rect, float minX)
+        {
+            rect.anchorMin = new Vector2(minX, 0f);
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = new Vector2(4f, 4f);
+            rect.offsetMax = new Vector2(-12f, -4f);
         }
 
         private static void EnsureSceneDirectoryExists()
@@ -138,12 +868,10 @@ namespace WoodClicker.Editor
             var cameraObject = new GameObject("Main Camera");
             cameraObject.tag = "MainCamera";
             cameraObject.transform.position = new Vector3(0f, 0f, -10f);
-
             Camera camera = cameraObject.AddComponent<Camera>();
             camera.orthographic = true;
             camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(0.12f, 0.18f, 0.12f);
-
+            camera.backgroundColor = new Color(0.10f, 0.16f, 0.10f);
             cameraObject.AddComponent<AudioListener>();
         }
 
@@ -151,11 +879,10 @@ namespace WoodClicker.Editor
         {
             var eventSystemObject = new GameObject("EventSystem");
             eventSystemObject.AddComponent<EventSystem>();
-
 #if ENABLE_INPUT_SYSTEM
-            InputSystemUIInputModule inputModule =
+            InputSystemUIInputModule module =
                 eventSystemObject.AddComponent<InputSystemUIInputModule>();
-            inputModule.AssignDefaultActions();
+            module.AssignDefaultActions();
 #else
             eventSystemObject.AddComponent<StandaloneInputModule>();
 #endif
@@ -164,153 +891,95 @@ namespace WoodClicker.Editor
         private static Canvas CreateCanvas()
         {
             var canvasObject = new GameObject(
-                "Canvas",
-                typeof(RectTransform),
-                typeof(Canvas),
-                typeof(CanvasScaler),
-                typeof(GraphicRaycaster));
-
+                "Canvas", typeof(RectTransform), typeof(Canvas),
+                typeof(CanvasScaler), typeof(GraphicRaycaster));
             Canvas canvas = canvasObject.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-
             CanvasScaler scaler = canvasObject.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1080f, 1920f);
             scaler.matchWidthOrHeight = 0.5f;
-
             return canvas;
         }
 
-        private static Button CreateTreeButton(RectTransform parent)
+        private sealed class HeaderReferences
         {
-            RectTransform buttonTransform = CreateUiObject("TreeButton", parent);
-            buttonTransform.anchorMin = new Vector2(0.5f, 0.5f);
-            buttonTransform.anchorMax = new Vector2(0.5f, 0.5f);
-            buttonTransform.pivot = new Vector2(0.5f, 0.5f);
-            buttonTransform.anchoredPosition = new Vector2(0f, 120f);
-            buttonTransform.sizeDelta = new Vector2(620f, 620f);
-
-            Image image = buttonTransform.gameObject.AddComponent<Image>();
-            image.color = new Color(0.35f, 0.65f, 0.25f);
-
-            Button button = buttonTransform.gameObject.AddComponent<Button>();
-            button.targetGraphic = image;
-
-            TextMeshProUGUI label = CreateText(
-                "Label",
-                buttonTransform,
-                "CHOP",
-                72f);
-            SetStretch(label.rectTransform, 20f, 20f, 20f, 20f);
-            label.raycastTarget = false;
-
-            return button;
+            public TMP_Text OwnedLogsText { get; }
+            public TMP_Text OwnedMoneyText { get; }
+            public Button OptionsButton { get; }
+            public HeaderReferences(TMP_Text logs, TMP_Text money, Button options)
+            {
+                OwnedLogsText = logs;
+                OwnedMoneyText = money;
+                OptionsButton = options;
+            }
         }
 
-        private static Image CreateCooldownGauge(RectTransform parent)
+        private sealed class ChoppingReferences
         {
-            RectTransform gaugeTransform = CreateUiObject("CooldownGauge", parent);
-            gaugeTransform.anchorMin = new Vector2(0.5f, 0.5f);
-            gaugeTransform.anchorMax = new Vector2(0.5f, 0.5f);
-            gaugeTransform.pivot = new Vector2(0.5f, 0.5f);
-            gaugeTransform.anchoredPosition = new Vector2(0f, -280f);
-            gaugeTransform.sizeDelta = new Vector2(620f, 64f);
-
-            Image image = gaugeTransform.gameObject.AddComponent<Image>();
-            image.color = new Color(1f, 0.75f, 0.15f);
-            image.type = Image.Type.Filled;
-            image.fillMethod = Image.FillMethod.Horizontal;
-            image.fillOrigin = (int)Image.OriginHorizontal.Left;
-            image.fillAmount = 0f;
-
-            return image;
+            public GameObject Screen { get; }
+            public Button TreeButton { get; }
+            public Image CooldownGauge { get; }
+            public TMP_Text CooldownText { get; }
+            public TMP_Text LogsPerTapText { get; }
+            public TMP_Text LogsPerSecondText { get; }
+            public TMP_Text EquippedToolText { get; }
+            public TMP_Text ToolStatusText { get; }
+            public ChoppingReferences(
+                GameObject screen, Button treeButton, Image gauge,
+                TMP_Text cooldown, TMP_Text perTap, TMP_Text perSecond,
+                TMP_Text tool, TMP_Text status)
+            {
+                Screen = screen;
+                TreeButton = treeButton;
+                CooldownGauge = gauge;
+                CooldownText = cooldown;
+                LogsPerTapText = perTap;
+                LogsPerSecondText = perSecond;
+                EquippedToolText = tool;
+                ToolStatusText = status;
+            }
         }
 
-        private static Button CreateSellAllButton(RectTransform parent)
+        private sealed class SellReferences
         {
-            RectTransform buttonTransform = CreateUiObject("SellAllButton", parent);
-            buttonTransform.anchorMin = new Vector2(0.5f, 0f);
-            buttonTransform.anchorMax = new Vector2(0.5f, 0f);
-            buttonTransform.pivot = new Vector2(0.5f, 0f);
-            buttonTransform.anchoredPosition = new Vector2(0f, 40f);
-            buttonTransform.sizeDelta = new Vector2(620f, 140f);
-
-            Image image = buttonTransform.gameObject.AddComponent<Image>();
-            image.color = new Color(0.85f, 0.55f, 0.15f);
-
-            Button button = buttonTransform.gameObject.AddComponent<Button>();
-            button.targetGraphic = image;
-
-            TextMeshProUGUI label = CreateText(
-                "Label",
-                buttonTransform,
-                "SELL ALL",
-                60f);
-            SetStretch(label.rectTransform, 20f, 20f, 20f, 20f);
-            label.raycastTarget = false;
-
-            return button;
+            public GameObject Screen { get; }
+            public TMP_Text OwnedLogsText { get; }
+            public TMP_Text BasePriceText { get; }
+            public TMP_Text FinalAmountText { get; }
+            public Button SellAllButton { get; }
+            public SellReferences(
+                GameObject screen, TMP_Text logs, TMP_Text price,
+                TMP_Text amount, Button button)
+            {
+                Screen = screen;
+                OwnedLogsText = logs;
+                BasePriceText = price;
+                FinalAmountText = amount;
+                SellAllButton = button;
+            }
         }
 
-        private static TextMeshProUGUI CreateText(
-            string name,
-            RectTransform parent,
-            string text,
-            float fontSize)
+        private sealed class OptionsReferences
         {
-            RectTransform textTransform = CreateUiObject(name, parent);
-            TextMeshProUGUI textComponent =
-                textTransform.gameObject.AddComponent<TextMeshProUGUI>();
-            textComponent.text = text;
-            textComponent.fontSize = fontSize;
-            textComponent.alignment = TextAlignmentOptions.Center;
-            textComponent.color = Color.white;
-            return textComponent;
+            public GameObject Screen { get; }
+            public Button CloseButton { get; }
+            public OptionsReferences(GameObject screen, Button button)
+            {
+                Screen = screen;
+                CloseButton = button;
+            }
         }
 
-        private static RectTransform CreateUiObject(
-            string name,
-            RectTransform parent)
+        private sealed class NavigationReferences
         {
-            var gameObject = new GameObject(name, typeof(RectTransform));
-            RectTransform rectTransform = gameObject.GetComponent<RectTransform>();
-            rectTransform.SetParent(parent, false);
-            return rectTransform;
-        }
-
-        private static void SetStretch(
-            RectTransform rectTransform,
-            float left = 0f,
-            float right = 0f,
-            float top = 0f,
-            float bottom = 0f)
-        {
-            rectTransform.anchorMin = Vector2.zero;
-            rectTransform.anchorMax = Vector2.one;
-            rectTransform.offsetMin = new Vector2(left, bottom);
-            rectTransform.offsetMax = new Vector2(-right, -top);
-        }
-
-        private static void ConnectSerializedReferences(
-            ChoppingController choppingController,
-            MainScreenView mainScreenView,
-            TMP_Text ownedLogsText,
-            TMP_Text ownedMoneyText,
-            Image cooldownGauge)
-        {
-            var controllerObject = new SerializedObject(choppingController);
-            controllerObject.FindProperty("_mainScreenView").objectReferenceValue =
-                mainScreenView;
-            controllerObject.ApplyModifiedPropertiesWithoutUndo();
-
-            var viewObject = new SerializedObject(mainScreenView);
-            viewObject.FindProperty("_ownedLogsText").objectReferenceValue =
-                ownedLogsText;
-            viewObject.FindProperty("_ownedMoneyText").objectReferenceValue =
-                ownedMoneyText;
-            viewObject.FindProperty("_cooldownGauge").objectReferenceValue =
-                cooldownGauge;
-            viewObject.ApplyModifiedPropertiesWithoutUndo();
+            public Button[] Buttons { get; }
+            public Image[] ButtonImages { get; }
+            public NavigationReferences(Button[] buttons, Image[] images)
+            {
+                Buttons = buttons;
+                ButtonImages = images;
+            }
         }
     }
 }
