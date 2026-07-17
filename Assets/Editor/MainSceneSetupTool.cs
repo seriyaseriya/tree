@@ -8,7 +8,9 @@ using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using WoodClicker.Application;
+using WoodClicker.Application.Characters;
 using WoodClicker.Application.Gacha;
+using WoodClicker.Presentation.Characters;
 using WoodClicker.Presentation.Gacha;
 using WoodClicker.Presentation.MainScreen;
 #if ENABLE_INPUT_SYSTEM
@@ -70,6 +72,8 @@ namespace WoodClicker.Editor
                 gameRoot.AddComponent<ChoppingController>();
             GachaController gachaController =
                 gameRoot.AddComponent<GachaController>();
+            CharacterCollectionController characterController =
+                gameRoot.AddComponent<CharacterCollectionController>();
             CreateEventSystem();
 
             Canvas canvas = CreateCanvas();
@@ -86,8 +90,8 @@ namespace WoodClicker.Editor
             ChoppingReferences chopping = CreateChoppingScreen(screenRoot);
             SellReferences sell = CreateSellScreen(screenRoot);
             GachaReferences gacha = CreateGachaScreen(screenRoot);
-            GameObject characterScreen = CreatePlaceholderScreen(
-                "CharacterScreen", screenRoot, "キャラ", "準備中");
+            CharacterCollectionReferences characters =
+                CreateCharacterCollectionScreen(screenRoot);
             GameObject skillScreen = CreatePlaceholderScreen(
                 "SkillTreeScreen", screenRoot, "スキル", "共同開発中");
             OptionsReferences options = CreateOptionsScreen(screenRoot);
@@ -102,16 +106,22 @@ namespace WoodClicker.Editor
             MainNavigationView navigationView =
                 viewTransform.gameObject.AddComponent<MainNavigationView>();
 
-            ConnectController(controller, mainView, gachaController);
+            ConnectController(
+                controller,
+                mainView,
+                gachaController,
+                characterController);
             ConnectGachaController(gachaController, gacha.View);
             ConnectGachaView(gacha);
+            ConnectCharacterController(characterController, characters.View);
+            ConnectCharacterView(characters);
             ConnectMainView(mainView, header, chopping, sell);
             ConnectNavigationView(
                 navigationView,
                 chopping.Screen,
                 sell.Screen,
                 gacha.Screen,
-                characterScreen,
+                characters.Screen,
                 skillScreen,
                 options.Screen,
                 navigation.ButtonImages);
@@ -129,7 +139,7 @@ namespace WoodClicker.Editor
             chopping.Screen.SetActive(true);
             sell.Screen.SetActive(false);
             gacha.Screen.SetActive(false);
-            characterScreen.SetActive(false);
+            characters.Screen.SetActive(false);
             skillScreen.SetActive(false);
             options.Screen.SetActive(false);
 
@@ -610,6 +620,87 @@ namespace WoodClicker.Editor
                 drawButton);
         }
 
+        private static CharacterCollectionReferences
+            CreateCharacterCollectionScreen(RectTransform parent)
+        {
+            RectTransform screen = CreateUiObject("CharacterScreen", parent);
+            SetStretch(screen);
+            CharacterCollectionView view =
+                screen.gameObject.AddComponent<CharacterCollectionView>();
+
+            RectTransform panel = CreatePanel(
+                "CharacterCollectionPanel", screen, PanelColor);
+            panel.anchorMin = new Vector2(0.06f, 0.04f);
+            panel.anchorMax = new Vector2(0.94f, 0.96f);
+            panel.offsetMin = Vector2.zero;
+            panel.offsetMax = Vector2.zero;
+
+            CreateAnchoredText(
+                "Title", panel, "キャラクター一覧", 58f, 0.87f, 0.98f);
+            TMP_Text ownedTypeCount = CreateAnchoredText(
+                "OwnedTypeCountText", panel, "所持種類数：0", 36f,
+                0.80f, 0.87f, 0.08f, 0.92f);
+            ownedTypeCount.alignment = TextAlignmentOptions.MidlineLeft;
+
+            RectTransform scrollRoot = CreatePanel(
+                "CharacterScrollView",
+                panel,
+                new Color(0.08f, 0.05f, 0.03f, 0.72f));
+            scrollRoot.anchorMin = new Vector2(0.06f, 0.06f);
+            scrollRoot.anchorMax = new Vector2(0.94f, 0.79f);
+            scrollRoot.offsetMin = Vector2.zero;
+            scrollRoot.offsetMax = Vector2.zero;
+            ScrollRect scrollRect = scrollRoot.gameObject.AddComponent<ScrollRect>();
+            scrollRect.horizontal = false;
+            scrollRect.vertical = true;
+
+            RectTransform viewport = CreateUiObject("Viewport", scrollRoot);
+            SetStretch(viewport, 12f, 12f, 12f, 12f);
+            Image viewportImage = viewport.gameObject.AddComponent<Image>();
+            viewportImage.color = new Color(0f, 0f, 0f, 0.01f);
+            viewport.gameObject.AddComponent<Mask>().showMaskGraphic = false;
+
+            RectTransform content = CreateUiObject("Content", viewport);
+            content.anchorMin = new Vector2(0f, 1f);
+            content.anchorMax = new Vector2(1f, 1f);
+            content.pivot = new Vector2(0.5f, 1f);
+            content.anchoredPosition = Vector2.zero;
+            content.sizeDelta = Vector2.zero;
+            VerticalLayoutGroup layout =
+                content.gameObject.AddComponent<VerticalLayoutGroup>();
+            layout.spacing = 14f;
+            layout.padding = new RectOffset(8, 8, 8, 8);
+            layout.childControlHeight = true;
+            layout.childControlWidth = true;
+            layout.childForceExpandHeight = false;
+            layout.childForceExpandWidth = true;
+            ContentSizeFitter fitter =
+                content.gameObject.AddComponent<ContentSizeFitter>();
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            scrollRect.viewport = viewport;
+            scrollRect.content = content;
+
+            TMP_Text emptyState = CreateAnchoredText(
+                "EmptyStateText",
+                scrollRoot,
+                "まだキャラクターを持っていません\n" +
+                "ガチャでキャラクターを仲間にしましょう",
+                38f,
+                0.30f,
+                0.70f,
+                0.08f,
+                0.92f);
+            emptyState.raycastTarget = false;
+
+            return new CharacterCollectionReferences(
+                screen.gameObject,
+                view,
+                ownedTypeCount,
+                emptyState,
+                content);
+        }
+
         private static OptionsReferences CreateOptionsScreen(RectTransform parent)
         {
             RectTransform screen = CreateUiObject("OptionsScreen", parent);
@@ -698,12 +789,41 @@ namespace WoodClicker.Editor
         private static void ConnectController(
             ChoppingController controller,
             MainScreenView view,
-            GachaController gachaController)
+            GachaController gachaController,
+            CharacterCollectionController characterController)
         {
             var serialized = new SerializedObject(controller);
             serialized.FindProperty("_mainScreenView").objectReferenceValue = view;
             serialized.FindProperty("_gachaController").objectReferenceValue =
                 gachaController;
+            serialized.FindProperty("_characterCollectionController")
+                .objectReferenceValue = characterController;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void ConnectCharacterController(
+            CharacterCollectionController controller,
+            CharacterCollectionView view)
+        {
+            var serialized = new SerializedObject(controller);
+            SetObjectReference(serialized, "_view", view);
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void ConnectCharacterView(
+            CharacterCollectionReferences characters)
+        {
+            var serialized = new SerializedObject(characters.View);
+            SetObjectReference(
+                serialized,
+                "_ownedTypeCountText",
+                characters.OwnedTypeCountText);
+            SetObjectReference(
+                serialized,
+                "_emptyStateText",
+                characters.EmptyStateText);
+            SetObjectReference(serialized, "_contentRoot", characters.ContentRoot);
+            SetObjectReference(serialized, "_fontAsset", _japaneseFontAsset);
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
@@ -1109,6 +1229,29 @@ namespace WoodClicker.Editor
                 OwnedCountText = ownedCount;
                 ErrorText = error;
                 DrawButton = drawButton;
+            }
+        }
+
+        private sealed class CharacterCollectionReferences
+        {
+            public GameObject Screen { get; }
+            public CharacterCollectionView View { get; }
+            public TMP_Text OwnedTypeCountText { get; }
+            public TMP_Text EmptyStateText { get; }
+            public RectTransform ContentRoot { get; }
+
+            public CharacterCollectionReferences(
+                GameObject screen,
+                CharacterCollectionView view,
+                TMP_Text ownedTypeCountText,
+                TMP_Text emptyStateText,
+                RectTransform contentRoot)
+            {
+                Screen = screen;
+                View = view;
+                OwnedTypeCountText = ownedTypeCountText;
+                EmptyStateText = emptyStateText;
+                ContentRoot = contentRoot;
             }
         }
 
